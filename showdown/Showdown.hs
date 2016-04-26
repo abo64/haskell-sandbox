@@ -1,5 +1,3 @@
---{-# LANGUAGE DatatypeContexts #-}
-
 module Showdown where
 
 import Control.Applicative ((<$>))
@@ -14,6 +12,7 @@ import Data.MarkovChain
 import qualified System.Random as Random
 import qualified Data.List as L
 import Data.Maybe
+import Data.Tuple (swap)
 
 data Outcome = Win | Draw | Loss deriving (Eq, Enum, Ord, Show)
 
@@ -51,7 +50,6 @@ type ShowdownHistory a = [(a,a)]
 type WithShowdownHistory a b = StateT (ShowdownHistory a) IO b
 
 newtype ShowdownStrategy a =
---  ShowdownStrategy { play :: ShowdownHistory a -> IO a }
   ShowdownStrategy { play :: WithShowdownHistory a a }
 
 randomBoundedEnum :: (Bounded a, Enum a) => IO a
@@ -77,7 +75,7 @@ markovChainRpsStrategy = ShowdownStrategy $ do
   liftIO $ do
     gen <- newStdGen
     trainingSeq <- if null history then randomSample else return $ lastN 10 history
-    return . beats . fst . head $ run 3 trainingSeq 0 gen
+    return . beats . snd . head $ run 3 trainingSeq 0 gen
   where
     randomSample = do
       l <- randomBoundedEnum
@@ -91,20 +89,23 @@ runShowdownStrategies :: (Showdown a, Show a) =>
     ShowdownStrategy a -> ShowdownStrategy a -> WithShowdownHistory a Outcome
 runShowdownStrategies strategy1 strategy2 = do
   move1 <- play strategy1
+  history <- get
+  modify' $ map swap
   move2 <- play strategy2
+  put history
   liftIO $ print (move1, move2)
   modify' $ flip (++) [(move1, move2)]
   return $ showdown move1 move2
 
--- runShowdownStrategies randomRpsStrategy randomRpsStrategy []
+-- runStateT (runShowdownStrategies randomRpsStrategy randomRpsStrategy) []
 
-twoRandomShowdowns :: WithShowdownHistory RPS ()
+twoRandomShowdowns :: WithShowdownHistory RPS (Outcome, Outcome)
 twoRandomShowdowns = do
   one <- runShowdownStrategies randomRpsStrategy randomRpsStrategy
   two <- runShowdownStrategies randomRpsStrategy randomRpsStrategy
-  return ()
+  return (one, two)
 
--- execStateT twoRandomShowdowns []
+-- runStateT twoRandomShowdowns []
 
 type Stats a = M.Map a Int
 type TestResult a = (Stats Outcome, ShowdownHistory a)
