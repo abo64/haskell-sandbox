@@ -69,17 +69,18 @@ showdownStrategy f = ShowdownStrategy $ do
   else return $ f history
 
 cyclicRpsStrategy :: ShowdownStrategy RPS
-cyclicRpsStrategy = showdownStrategy $ next . fst . last
+cyclicRpsStrategy = showdownStrategy $ next . fst . head
   where
     next x = if x == maxBound then minBound else succ x
 
 --runStateT (play cyclicRpsStrategy) [(Scissors,Paper)]
 
 mimicRpsStrategy :: ShowdownStrategy RPS
-mimicRpsStrategy = showdownStrategy $ snd . last
+mimicRpsStrategy = showdownStrategy $ snd . head
 
 --runStateT (play mimicRpsStrategy) [(Scissors,Paper)]
 
+-- put this into some main function
 userInputRpsStrategy :: ShowdownStrategy RPS
 userInputRpsStrategy = ShowdownStrategy $ do
   liftIO $ putStr "Choose (r)ock, (p)aper or (s)cissors: "
@@ -88,19 +89,27 @@ userInputRpsStrategy = ShowdownStrategy $ do
 
 --runStateT (play userInputRpsStrategy) []
 
+main :: IO ()
+main = do
+  putStr "How many showdowns?"
+  input <- getLine
+  let howMany = read input :: Int
+  results <- runTestShowdownStrategies howMany markovChainRpsStrategy userInputRpsStrategy
+  print results
+  return ()
+
 markovChainRpsStrategy :: ShowdownStrategy RPS
 markovChainRpsStrategy = ShowdownStrategy $ do
   history <- get
   liftIO $ do
     gen <- newStdGen
-    trainingSeq <- if null history then randomSample else return $ lastN 10 history
+    trainingSeq <- if null history then randomSample else return $ take 10 history
     return . beats . snd . head $ run 3 trainingSeq 0 gen
   where
     randomSample = do
       l <- randomBoundedEnum
       r <- randomBoundedEnum
       return [(l,r)]
-    lastN n xs = drop (length xs - n) xs
 
 --runStateT (play markovChainRpsStrategy) []
 
@@ -111,11 +120,11 @@ runShowdownStrategies strategy1 strategy2 = do
   history <- get
   modify' $ map swap
   move2 <- play strategy2
-  put history
-  liftIO $ print (move1, move2)
-  modify' $ flip (++) [(move1, move2)]
-  h <- get
-  return $ showdown move1 move2
+  let game = (move1, move2)
+      outcome = showdown move1 move2
+  put $ game : history
+  liftIO $ putStrLn $ show game ++ " -> " ++ show outcome
+  return outcome
 
 -- runStateT (runShowdownStrategies randomRpsStrategy randomRpsStrategy) []
 
