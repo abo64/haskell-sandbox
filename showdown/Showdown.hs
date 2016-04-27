@@ -13,6 +13,7 @@ import qualified System.Random as Random
 import qualified Data.List as L
 import Data.Maybe
 import Data.Tuple (swap)
+import Debug.Trace (trace)
 
 data Outcome = Win | Draw | Loss deriving (Eq, Enum, Ord, Show)
 
@@ -59,7 +60,34 @@ randomBoundedEnum = runRVar choose DevRandom
 randomRpsStrategy :: ShowdownStrategy RPS
 randomRpsStrategy = ShowdownStrategy $ liftIO randomBoundedEnum
 
---runStateT (play randomRpsStrategy) []
+--runStateT (replicateM 10 (play randomRpsStrategy)) []
+
+showdownStrategy :: (Bounded a, Enum a) =>
+    (ShowdownHistory a -> WithShowdownHistory a a) -> ShowdownStrategy a
+showdownStrategy f = ShowdownStrategy $ do
+  history <- get
+  if null history then liftIO randomBoundedEnum
+  else f history
+
+cyclicRpsStrategy :: ShowdownStrategy RPS
+cyclicRpsStrategy = showdownStrategy $ return . next . fst . last
+--ShowdownStrategy $ do
+--  history <- get
+--  if null history then liftIO randomBoundedEnum
+--  else return . next . fst $ last history
+  where
+    next x = if x == maxBound then minBound else succ x
+
+--runStateT (play cyclicRpsStrategy) [(Scissors,Paper)]
+
+mimicRpsStrategy :: ShowdownStrategy RPS
+mimicRpsStrategy = showdownStrategy $ return . snd . last
+--ShowdownStrategy $ do
+--  history <- get
+--  if null history then liftIO randomBoundedEnum
+--  else return . snd $ last history
+
+--runStateT (play mimicRpsStrategy) [(Scissors,Paper)]
 
 userInputRpsStrategy :: ShowdownStrategy RPS
 userInputRpsStrategy = ShowdownStrategy $ do
@@ -95,6 +123,7 @@ runShowdownStrategies strategy1 strategy2 = do
   put history
   liftIO $ print (move1, move2)
   modify' $ flip (++) [(move1, move2)]
+  h <- get
   return $ showdown move1 move2
 
 -- runStateT (runShowdownStrategies randomRpsStrategy randomRpsStrategy) []
@@ -120,13 +149,14 @@ testShowdownStrategies howMany strategy1 strategy2 =
     toStats = MS.toMap . MS.fromList
 
 runTestShowdownStrategies :: (Showdown a, Show a) =>
-    Int -> ShowdownStrategy a -> ShowdownStrategy a -> IO (TestResult RPS)
+    Int -> ShowdownStrategy a -> ShowdownStrategy a -> IO (TestResult a)
 runTestShowdownStrategies howMany strategy1 strategy2 =
-  runStateT (testShowdownStrategies howMany randomRpsStrategy randomRpsStrategy) []
+  runStateT (testShowdownStrategies howMany strategy1 strategy2) []
 
--- runTestShowdownStrategies 3 randomRpsStrategy randomRpsStrategy
--- runTestShowdownStrategies 10 markovChainRpsStrategy randomRpsStrategy
+-- runTestShowdownStrategies 10 randomRpsStrategy mimicRpsStrategy
+-- runTestShowdownStrategies 10 mimicRpsStrategy mimicRpsStrategy
+-- runTestShowdownStrategies 10 markovChainRpsStrategy mimicRpsStrategy
 
 --foo = take 100 $ run 2 "The sad cat sat on the mat. " 0 (Random.mkStdGen 123)
 --bar = take 100 $ run 2 [1,2,3,1,2,3,1,2,3] 0 (Random.mkStdGen 123)
-baz = take 10 $ run 2 [1,2,2,1,3,1,3] 0 (Random.mkStdGen 123)
+--baz = take 10 $ run 2 [1,2,2,1,3,1,3] 0 (Random.mkStdGen 123)
