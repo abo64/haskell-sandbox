@@ -89,15 +89,6 @@ userInputRpsStrategy = ShowdownStrategy $ do
 
 --runStateT (play userInputRpsStrategy) []
 
-main :: IO ()
-main = do
-  putStr "How many showdowns?"
-  input <- getLine
-  let howMany = read input :: Int
-  results <- runTestShowdownStrategies howMany markovChainRpsStrategy userInputRpsStrategy
-  print results
-  return ()
-
 markovChainRpsStrategy :: ShowdownStrategy RPS
 markovChainRpsStrategy = ShowdownStrategy $ do
   history <- get
@@ -156,6 +147,14 @@ runTestShowdownStrategies howMany strategy1 strategy2 =
 -- runTestShowdownStrategies 10 randomRpsStrategy mimicRpsStrategy
 -- runTestShowdownStrategies 10 mimicRpsStrategy mimicRpsStrategy
 -- runTestShowdownStrategies 10 markovChainRpsStrategy mimicRpsStrategy
+
+main :: IO ()
+main = do
+  putStr "How many showdowns?"
+  input <- getLine
+  let howMany = read input :: Int
+  results <- runTestShowdownStrategies howMany markovChainRpsStrategy userInputRpsStrategy
+  print results
 
 --foo = take 100 $ run 2 "The sad cat sat on the mat. " 0 (Random.mkStdGen 123)
 --bar = take 100 $ run 2 [1,2,3,1,2,3,1,2,3] 0 (Random.mkStdGen 123)
