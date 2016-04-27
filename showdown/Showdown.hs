@@ -13,7 +13,6 @@ import qualified System.Random as Random
 import qualified Data.List as L
 import Data.Maybe
 import Data.Tuple (swap)
-import Debug.Trace (trace)
 
 data Outcome = Win | Draw | Loss deriving (Eq, Enum, Ord, Show)
 
@@ -63,14 +62,14 @@ randomRpsStrategy = ShowdownStrategy $ liftIO randomBoundedEnum
 --runStateT (replicateM 10 (play randomRpsStrategy)) []
 
 showdownStrategy :: (Bounded a, Enum a) =>
-    (ShowdownHistory a -> WithShowdownHistory a a) -> ShowdownStrategy a
+    (ShowdownHistory a -> a) -> ShowdownStrategy a
 showdownStrategy f = ShowdownStrategy $ do
   history <- get
   if null history then liftIO randomBoundedEnum
-  else f history
+  else return $ f history
 
 cyclicRpsStrategy :: ShowdownStrategy RPS
-cyclicRpsStrategy = showdownStrategy $ return . next . fst . last
+cyclicRpsStrategy = showdownStrategy $ next . fst . last
 --ShowdownStrategy $ do
 --  history <- get
 --  if null history then liftIO randomBoundedEnum
@@ -81,7 +80,7 @@ cyclicRpsStrategy = showdownStrategy $ return . next . fst . last
 --runStateT (play cyclicRpsStrategy) [(Scissors,Paper)]
 
 mimicRpsStrategy :: ShowdownStrategy RPS
-mimicRpsStrategy = showdownStrategy $ return . snd . last
+mimicRpsStrategy = showdownStrategy $ snd . last
 --ShowdownStrategy $ do
 --  history <- get
 --  if null history then liftIO randomBoundedEnum
