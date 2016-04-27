@@ -70,10 +70,6 @@ showdownStrategy f = ShowdownStrategy $ do
 
 cyclicRpsStrategy :: ShowdownStrategy RPS
 cyclicRpsStrategy = showdownStrategy $ next . fst . last
---ShowdownStrategy $ do
---  history <- get
---  if null history then liftIO randomBoundedEnum
---  else return . next . fst $ last history
   where
     next x = if x == maxBound then minBound else succ x
 
@@ -81,10 +77,6 @@ cyclicRpsStrategy = showdownStrategy $ next . fst . last
 
 mimicRpsStrategy :: ShowdownStrategy RPS
 mimicRpsStrategy = showdownStrategy $ snd . last
---ShowdownStrategy $ do
---  history <- get
---  if null history then liftIO randomBoundedEnum
---  else return . snd $ last history
 
 --runStateT (play mimicRpsStrategy) [(Scissors,Paper)]
 
