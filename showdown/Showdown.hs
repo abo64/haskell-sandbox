@@ -10,7 +10,7 @@ import Control.Monad.Random
 import qualified Data.Map as M
 import qualified Data.MultiSet as MS
 import System.Random (RandomGen, newStdGen, randomR)
-import Data.MarkovChain
+import qualified Data.MarkovChain as Markov
 import qualified System.Random as Random
 import qualified Data.List as L
 import Data.Maybe
@@ -108,17 +108,14 @@ userInputRpsStrategy = ShowdownStrategy $ do
 
 --runStateT (evalRandT (play userInputRpsStrategy) (mkStdGen 123)) []
 
-newtype MarkovRandomWalk a =
-  MarkovRandomWalk { randomWalk :: [a] }
-
 newtype RunMarkovRandomWalk a =
-  RunMarkovRandomWalk { runWalk :: (Ord a) => Int -> [a] -> Int-> MarkovRandomWalk a }
+  RunMarkovRandomWalk { runRandomWalk :: (Ord a) => Int -> [a] -> Int-> [a] }
 
 instance Random (RunMarkovRandomWalk a) where
   randomR (a,b) g = undefined
   random gen = (RunMarkovRandomWalk rw, gen')
     where
-      rw size trainingSeq start = MarkovRandomWalk $ run size trainingSeq start gen
+      rw size trainingSeq start = Markov.run size trainingSeq start gen
       (_, gen') = split gen
 
 markovChainRpsStrategy :: (Monad m) => ShowdownStrategy RPS m
@@ -127,9 +124,9 @@ markovChainRpsStrategy = ShowdownStrategy $ do
   trainingSeq <-
         if null history then randomSample
         else return $ take 10 history
-  markovRandomWalk <- runMarkovRandomWalk
-  let markovChain = (runWalk markovRandomWalk) 3 trainingSeq 0
-      guess = markovGuess $ randomWalk markovChain
+  markovRandomWalk <- getRandom
+  let markovChain = (runRandomWalk markovRandomWalk) 100 trainingSeq 0
+      guess = markovGuess markovChain
   return guess
   where
     randomSample :: (Random a, MonadRandom m) => m (ShowdownHistory a)
@@ -139,8 +136,6 @@ markovChainRpsStrategy = ShowdownStrategy $ do
       return [(l,r)]
     markovGuess :: (Ord a, Showdown a) => ShowdownHistory a -> a
     markovGuess = beats . snd . head
-    runMarkovRandomWalk :: (Ord a, MonadRandom m) => m (RunMarkovRandomWalk (a, a))
-    runMarkovRandomWalk = getRandom
 
 --runStateT (evalRandT (play markovChainRpsStrategy) (mkStdGen 123)) []
 
