@@ -1,22 +1,15 @@
---{-# LANGUAGE DatatypeContexts #-}
-{-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Showdown where
 
 import Control.Applicative ((<$>))
---import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Identity
 import Control.Monad.Random
 import qualified Data.Map as M
 import qualified Data.MultiSet as MS
 import System.Random (RandomGen, newStdGen, randomR)
---import Data.Random.Extras
---import Data.Random.Source.DevRandom
---import Data.RVar
 import Data.MarkovChain
 import qualified System.Random as Random
 import qualified Data.List as L
@@ -60,17 +53,12 @@ instance ReadChar RPS where
 
 type ShowdownHistory a = [(a,a)]
 
---type WithShowdownHistory a b g = ReaderT (RandomGen g) (StateT (ShowdownHistory a) IO) b
---type WithShowdownHistory a = ReaderT StdGen (StateT (ShowdownHistory a) IO)
---type WithShowdownHistory a = RandT StdGen (StateT (ShowdownHistory a) Identity)
---type WithShowdownHistory a = StateT (ShowdownHistory a) (RandT StdGen Identity)
-type WithShowdownHistory a b = --RandT StdGen (StateT (ShowdownHistory a) Identity)
---  forall g. RandT g (StateT (ShowdownHistory a) Identity) b
-  (Ord a, RandomGen g) => RandT g (StateT (ShowdownHistory a) Identity) b
+type WithShowdownHistory a b m =
+  (Ord a, RandomGen g, Monad m) => RandT g (StateT (ShowdownHistory a) m) b
 
-newtype ShowdownStrategy a =
+newtype ShowdownStrategy a m =
 -- TODO make play :: ShowdownHistory a a -> Rand a ?!
-  ShowdownStrategy { play :: WithShowdownHistory a a }
+  ShowdownStrategy { play :: WithShowdownHistory a a m }
 
 instance Random RPS where
   randomR (a,b) g =
@@ -78,47 +66,47 @@ instance Random RPS where
       (x, g') -> (toEnum x, g')
   random = randomR (minBound, maxBound)
 
---randomBoundedEnum :: (Bounded a, Enum a) => IO a
---randomBoundedEnum = runRVar choose DevRandom
---  where choose = choice [minBound .. maxBound]
---randomBoundedEnum :: (Bounded a, Enum a, Random a, RandomGen g) => Rand g a
 randomBoundedEnum :: (Bounded a, Enum a, Random a, MonadRandom m) => m a
 randomBoundedEnum = getRandomR (minBound, maxBound)
 
---type RandRPS = Rand StdGen RPS
-
-randomRpsStrategy :: ShowdownStrategy RPS
+randomRpsStrategy :: (Monad m) => ShowdownStrategy RPS m
 randomRpsStrategy = ShowdownStrategy randomBoundedEnum
 
 --runStateT (replicateM 10 (play randomRpsStrategy)) []
 
-showdownStrategy :: (Ord a, Bounded a, Enum a, Random a) =>
-    (ShowdownHistory a -> a) -> ShowdownStrategy a
+showdownStrategy :: (Ord a, Bounded a, Enum a, Random a, Monad m) =>
+    (ShowdownHistory a -> a) -> ShowdownStrategy a m
 showdownStrategy f = ShowdownStrategy $ do
   history <- get
   if null history then randomBoundedEnum
   else return $ f history
 
-cyclicRpsStrategy :: ShowdownStrategy RPS
+cyclicRpsStrategy :: (Monad m) =>  ShowdownStrategy RPS m
 cyclicRpsStrategy = showdownStrategy $ next . fst . head
   where
     next x = if x == maxBound then minBound else succ x
 
 --runStateT (play cyclicRpsStrategy) [(Scissors,Paper)]
 
-mimicRpsStrategy :: ShowdownStrategy RPS
+mimicRpsStrategy :: (Monad m) => ShowdownStrategy RPS m
 mimicRpsStrategy = showdownStrategy $ snd . head
 
 --runStateT (play mimicRpsStrategy) [(Scissors,Paper)]
 
 -- put this into some main function
-userInputRpsStrategy :: IO (ShowdownStrategy RPS)
-userInputRpsStrategy = do
-  putStr "Choose (r)ock, (p)aper or (s)cissors: "
-  input <- getLine
-  return $ ShowdownStrategy $ return (readChar (head input))
+--userInputRpsStrategy :: IO (ShowdownStrategy RPS)
+--userInputRpsStrategy = do
+--  putStr "Choose (r)ock, (p)aper or (s)cissors: "
+--  input <- getLine
+--  return $ ShowdownStrategy $ return (readChar (head input))
 
---runStateT (play userInputRpsStrategy) []
+userInputRpsStrategy :: ShowdownStrategy RPS IO
+userInputRpsStrategy = ShowdownStrategy $ do
+  liftIO $ putStr "Choose (r)ock, (p)aper or (s)cissors: "
+  input <- liftIO getLine
+  return $ readChar (head input)
+
+--runStateT (evalRandT (play userInputRpsStrategy) (mkStdGen 123)) []
 
 newtype MarkovRandomWalk a =
   MarkovRandomWalk { randomWalk :: [a] }
@@ -127,30 +115,23 @@ newtype RunMarkovRandomWalk a =
   RunMarkovRandomWalk { runWalk :: (Ord a) => Int -> [a] -> Int-> MarkovRandomWalk a }
 
 instance Random (RunMarkovRandomWalk a) where
-  randomR (a,b) g =
-    undefined
+  randomR (a,b) g = undefined
   random gen = (RunMarkovRandomWalk rw, gen')
     where
       rw size trainingSeq start = MarkovRandomWalk $ run size trainingSeq start gen
       (_, gen') = split gen
 
-markovChainRpsStrategy :: ShowdownStrategy RPS
+markovChainRpsStrategy :: (Monad m) => ShowdownStrategy RPS m
 markovChainRpsStrategy = ShowdownStrategy $ do
   history <- get
---  liftIO $ do
---    gen <- newStdGen
---  (_, gen) <- getRandom
-  let gen = mkStdGen 123
   trainingSeq <-
-        if null history then randomSample else return $ take 10 history
---  return . beats . snd . head $ runMarkovChain trainingSeq
+        if null history then randomSample
+        else return $ take 10 history
   markovRandomWalk <- runMarkovRandomWalk
   let markovChain = (runWalk markovRandomWalk) 3 trainingSeq 0
---  let markovChain = runMarkovChain gen trainingSeq
-  let guess = markovGuess $ randomWalk markovChain
+      guess = markovGuess $ randomWalk markovChain
   return guess
   where
---    randomSample :: (Random a, RandomGen g) => Rand g (ShowdownHistory a)
     randomSample :: (Random a, MonadRandom m) => m (ShowdownHistory a)
     randomSample = do
       as <- getRandoms
@@ -161,10 +142,10 @@ markovChainRpsStrategy = ShowdownStrategy $ do
     runMarkovRandomWalk :: (Ord a, MonadRandom m) => m (RunMarkovRandomWalk (a, a))
     runMarkovRandomWalk = getRandom
 
---runStateT (play markovChainRpsStrategy) []
+--runStateT (evalRandT (play markovChainRpsStrategy) (mkStdGen 123)) []
 
-runShowdownStrategies :: (Showdown a, Ord a, Show a) =>
-    ShowdownStrategy a -> ShowdownStrategy a -> WithShowdownHistory a Outcome
+runShowdownStrategies :: (Showdown a, Ord a, Show a, Monad m) =>
+    ShowdownStrategy a m -> ShowdownStrategy a m -> WithShowdownHistory a Outcome m
 runShowdownStrategies strategy1 strategy2 = do
   move1 <- play strategy1
   history <- get
@@ -176,21 +157,22 @@ runShowdownStrategies strategy1 strategy2 = do
 --  liftIO $ putStrLn $ show game ++ " -> " ++ show outcome
   return outcome
 
--- runStateT (runShowdownStrategies randomRpsStrategy randomRpsStrategy) []
+-- runStateT (evalRandT twoRandomShowdowns (mkStdGen 123)) []
 
-twoRandomShowdowns :: WithShowdownHistory RPS (Outcome, Outcome)
+twoRandomShowdowns :: (Monad m) => WithShowdownHistory RPS (Outcome, Outcome) m
 twoRandomShowdowns = do
   one <- runShowdownStrategies randomRpsStrategy randomRpsStrategy
   two <- runShowdownStrategies randomRpsStrategy randomRpsStrategy
   return (one, two)
 
--- runStateT twoRandomShowdowns []
+-- runStateT (evalRandT twoRandomShowdowns (mkStdGen 123)) []
 
 type Stats a = M.Map a Int
 type TestResult a = (Stats Outcome, ShowdownHistory a)
 
-testShowdownStrategies :: (Showdown a, Show a) =>
-    Int -> ShowdownStrategy a -> ShowdownStrategy a -> WithShowdownHistory a (Stats Outcome)
+testShowdownStrategies :: (Showdown a, Show a, Functor m, Monad m) =>
+    Int -> ShowdownStrategy a m -> ShowdownStrategy a m ->
+        WithShowdownHistory a (Stats Outcome) m
 testShowdownStrategies howMany strategy1 strategy2 =
   toStats <$> runShowdowns
   where
@@ -198,12 +180,10 @@ testShowdownStrategies howMany strategy1 strategy2 =
     toStats :: [Outcome] -> Stats Outcome
     toStats = MS.toMap . MS.fromList
 
-runTestShowdownStrategies :: (Showdown a, Ord a, Show a, RandomGen g) =>
-    Int -> g -> ShowdownStrategy a -> ShowdownStrategy a -> TestResult a
+runTestShowdownStrategies :: (Showdown a, Ord a, Show a, RandomGen g, Functor m, Monad m) =>
+    Int -> g -> ShowdownStrategy a m -> ShowdownStrategy a m -> m (TestResult a)
 runTestShowdownStrategies howMany gen strategy1 strategy2 =
---  gen <- getStdGen
---  let gen = mkStdGen 123
-  runIdentity (runStateT (evalRandT (testShowdownStrategies howMany strategy1 strategy2) gen) [])
+  runStateT (evalRandT (testShowdownStrategies howMany strategy1 strategy2) gen) []
 
 -- runTestShowdownStrategies 10 (mkStdGen 123) randomRpsStrategy mimicRpsStrategy
 -- runTestShowdownStrategies 10 (mkStdGen 123) mimicRpsStrategy mimicRpsStrategy
@@ -213,12 +193,7 @@ main :: IO ()
 main = do
   putStr "How many showdowns?"
   input <- getLine
-  gen <- newStdGen
   let howMany = read input :: Int
-  uis <- userInputRpsStrategy
-  let results = runTestShowdownStrategies howMany gen markovChainRpsStrategy uis
+  gen <- newStdGen
+  results <- runTestShowdownStrategies howMany gen markovChainRpsStrategy userInputRpsStrategy
   print results
-
---foo = take 100 $ run 2 "The sad cat sat on the mat. " 0 (Random.mkStdGen 123)
---bar = take 100 $ run 2 [1,2,3,1,2,3,1,2,3] 0 (Random.mkStdGen 123)
---baz = take 10 $ run 2 [1,2,2,1,3,1,3] 0 (Random.mkStdGen 123)
