@@ -93,13 +93,6 @@ mimicRpsStrategy = showdownStrategy $ snd . head
 
 --runStateT (play mimicRpsStrategy) [(Scissors,Paper)]
 
--- put this into some main function
---userInputRpsStrategy :: IO (ShowdownStrategy RPS)
---userInputRpsStrategy = do
---  putStr "Choose (r)ock, (p)aper or (s)cissors: "
---  input <- getLine
---  return $ ShowdownStrategy $ return (readChar (head input))
-
 userInputRpsStrategy :: ShowdownStrategy RPS IO
 userInputRpsStrategy = ShowdownStrategy $ do
   liftIO $ putStr "Choose (r)ock, (p)aper or (s)cissors: "
