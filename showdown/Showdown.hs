@@ -5,15 +5,10 @@ module Showdown where
 
 import Control.Applicative ((<$>))
 import Control.Monad.State
-import Control.Monad.Identity
 import Control.Monad.Random
 import qualified Data.Map as M
 import qualified Data.MultiSet as MS
-import System.Random (RandomGen, newStdGen, randomR)
 import qualified Data.MarkovChain as Markov
-import qualified System.Random as Random
-import qualified Data.List as L
-import Data.Maybe
 import Data.Tuple (swap)
 --import Test.QuickCheck
 --import Test.Tasty.HUnit
@@ -82,9 +77,9 @@ showdownStrategy f = ShowdownStrategy $ do
   else return $ f history
 
 cyclicRpsStrategy :: (Monad m) =>  ShowdownStrategy RPS m
-cyclicRpsStrategy = showdownStrategy $ next . fst . head
+cyclicRpsStrategy = showdownStrategy $ next' . fst . head
   where
-    next x = if x == maxBound then minBound else succ x
+    next' x = if x == maxBound then minBound else succ x
 
 --runStateT (play cyclicRpsStrategy) [(Scissors,Paper)]
 
@@ -105,7 +100,7 @@ newtype RunMarkovRandomWalk a =
   RunMarkovRandomWalk { runRandomWalk :: (Ord a) => Int -> [a] -> Int-> [a] }
 
 instance Random (RunMarkovRandomWalk a) where
-  randomR (a,b) g = undefined
+  randomR (_,_) _ = undefined
   random gen = (RunMarkovRandomWalk rw, gen')
     where
       rw size trainingSeq start = Markov.run size trainingSeq start gen
@@ -135,8 +130,8 @@ markovChainRpsStrategy = ShowdownStrategy $ do
 runShowdownStrategies :: (Showdown a, Ord a, Show a, Monad m) =>
     ShowdownStrategy a m -> ShowdownStrategy a m -> WithShowdownHistory a Outcome m
 runShowdownStrategies strategy1 strategy2 = do
-  move1 <- play strategy1
   history <- get
+  move1 <- play strategy1
   modify' $ map swap
   move2 <- play strategy2
   let game = (move1, move2)
@@ -144,16 +139,6 @@ runShowdownStrategies strategy1 strategy2 = do
   put $ game : history
 --  liftIO $ putStrLn $ show game ++ " -> " ++ show outcome
   return outcome
-
--- runStateT (evalRandT twoRandomShowdowns (mkStdGen 123)) []
-
-twoRandomShowdowns :: (Monad m) => WithShowdownHistory RPS (Outcome, Outcome) m
-twoRandomShowdowns = do
-  one <- runShowdownStrategies randomRpsStrategy randomRpsStrategy
-  two <- runShowdownStrategies randomRpsStrategy randomRpsStrategy
-  return (one, two)
-
--- runStateT (evalRandT twoRandomShowdowns (mkStdGen 123)) []
 
 type Stats a = M.Map a Int
 type TestResult a = (Stats Outcome, ShowdownHistory a)
