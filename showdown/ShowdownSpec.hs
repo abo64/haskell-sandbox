@@ -5,10 +5,9 @@ module ShowdownSpec where
 
 import Test.Hspec
 import qualified Data.Map as Map
-import System.Random (StdGen, mkStdGen)
 import Control.Monad.State
 import Control.Monad.Random
-import Showdown hiding (main) --(runTestShowdownStrategies)
+import Showdown hiding (main)
 
 testGen :: StdGen
 testGen = mkStdGen 123
