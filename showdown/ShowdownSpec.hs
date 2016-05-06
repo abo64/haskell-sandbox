@@ -4,9 +4,11 @@
 module ShowdownSpec where
 
 import Test.Hspec
+import Test.QuickCheck
 import qualified Data.Map as Map
 import Control.Monad.State
 import Control.Monad.Random
+import Data.Map (toList)
 import Showdown hiding (main)
 
 testGen :: StdGen
@@ -38,4 +40,11 @@ main = hspec $ do
         runTestShowdownStrategies 4 testGen randomRpsStrategy randomRpsStrategy
       outcomes `shouldBe` Map.fromList [(Win,1),(Loss,3)]
       history `shouldBe` [(Paper,Rock),(Paper,Scissors),(Paper,Scissors),(Scissors,Rock)]
-      
+
+    it "should respect the howMany parameter" $ property $
+      \(Positive n) -> do
+        (outcomes, history) <-
+          runTestShowdownStrategies n (mkStdGen n) randomRpsStrategy randomRpsStrategy
+        print $ (show n) ++ ": " ++ (show outcomes)
+        (length history) `shouldBe` n
+        // TODO check that outcomes are correct w/ respect to history
