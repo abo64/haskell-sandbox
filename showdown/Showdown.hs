@@ -55,6 +55,8 @@ newtype ShowdownStrategy a m =
 -- TODO make play :: ShowdownHistory a a -> Rand a ?!
   ShowdownStrategy { play :: WithShowdownHistory a a m }
 
+type RpsStrategy = (Monad m) => ShowdownStrategy RPS m
+
 instance Random RPS where
   randomR (a,b) g =
     case randomR (fromEnum a, fromEnum b) g of
@@ -64,10 +66,8 @@ instance Random RPS where
 randomBoundedEnum :: (Bounded a, Enum a, Random a, MonadRandom m) => m a
 randomBoundedEnum = getRandomR (minBound, maxBound)
 
-randomRpsStrategy :: (Monad m) => ShowdownStrategy RPS m
-randomRpsStrategy = ShowdownStrategy randomBoundedEnum
-
---runStateT (replicateM 10 (play randomRpsStrategy)) []
+randomStrategy :: (Bounded a, Enum a, Random a, Monad m) => ShowdownStrategy a m
+randomStrategy = ShowdownStrategy randomBoundedEnum
 
 showdownStrategy :: (Ord a, Bounded a, Enum a, Random a, Monad m) =>
     (ShowdownHistory a -> a) -> ShowdownStrategy a m
@@ -76,25 +76,19 @@ showdownStrategy f = ShowdownStrategy $ do
   if null history then randomBoundedEnum
   else return $ f history
 
-cyclicRpsStrategy :: (Monad m) =>  ShowdownStrategy RPS m
-cyclicRpsStrategy = showdownStrategy $ next' . fst . head
+cyclicStrategy :: (Ord a, Bounded a, Enum a, Random a, Monad m) =>  ShowdownStrategy a m
+cyclicStrategy = showdownStrategy $ next' . fst . head
   where
     next' x = if x == maxBound then minBound else succ x
 
---runStateT (play cyclicRpsStrategy) [(Scissors,Paper)]
+mimicStrategy :: (Ord a, Bounded a, Enum a, Random a, Monad m) => ShowdownStrategy a m
+mimicStrategy = showdownStrategy $ snd . head
 
-mimicRpsStrategy :: (Monad m) => ShowdownStrategy RPS m
-mimicRpsStrategy = showdownStrategy $ snd . head
-
---runStateT (play mimicRpsStrategy) [(Scissors,Paper)]
-
-userInputRpsStrategy :: ShowdownStrategy RPS IO
-userInputRpsStrategy = ShowdownStrategy $ do
+userInputStrategy :: (ReadChar a) => ShowdownStrategy a IO
+userInputStrategy = ShowdownStrategy $ do
   liftIO $ putStr "Choose (r)ock, (p)aper or (s)cissors: "
   input <- liftIO getLine
   return $ readChar (head input)
-
---runStateT (evalRandT (play userInputRpsStrategy) (mkStdGen 123)) []
 
 newtype RunMarkovRandomWalk a =
   RunMarkovRandomWalk { runRandomWalk :: (Ord a) => Int -> [a] -> Int-> [a] }
@@ -106,8 +100,8 @@ instance Random (RunMarkovRandomWalk a) where
       rw size trainingSeq start = Markov.run size trainingSeq start gen
       (_, gen') = split gen
 
-markovChainRpsStrategy :: (Monad m) => ShowdownStrategy RPS m
-markovChainRpsStrategy = ShowdownStrategy $ do
+markovChainStrategy :: (Ord a, Showdown a, Random a, Monad m) => ShowdownStrategy a m
+markovChainStrategy = ShowdownStrategy $ do
   history <- get
   trainingSeq <-
         if null history then randomSample
@@ -125,7 +119,7 @@ markovChainRpsStrategy = ShowdownStrategy $ do
     markovGuess :: (Ord a, Showdown a) => ShowdownHistory a -> a
     markovGuess = beats . snd . head
 
---runStateT (evalRandT (play markovChainRpsStrategy) (mkStdGen 123)) []
+--runStateT (evalRandT (play (markovChainStrategy::RpsStrategy)) (mkStdGen 123)) []
 
 runShowdownStrategies :: (Showdown a, Ord a, Show a, Monad m) =>
     ShowdownStrategy a m -> ShowdownStrategy a m -> WithShowdownHistory a Outcome m
@@ -158,9 +152,9 @@ runTestShowdownStrategies :: (Showdown a, Ord a, Show a, RandomGen g, Functor m,
 runTestShowdownStrategies howMany gen strategy1 strategy2 =
   runStateT (evalRandT (testShowdownStrategies howMany strategy1 strategy2) gen) []
 
--- runTestShowdownStrategies 10 (mkStdGen 123) randomRpsStrategy mimicRpsStrategy
--- runTestShowdownStrategies 10 (mkStdGen 123) mimicRpsStrategy mimicRpsStrategy
--- runTestShowdownStrategies 10 (mkStdGen 123) markovChainRpsStrategy mimicRpsStrategy
+-- runTestShowdownStrategies 10 (mkStdGen 123) (randomStrategy::RpsStrategy) mimicStrategy
+-- runTestShowdownStrategies 10 (mkStdGen 123) (mimicStrategy::RpsStrategy) mimicStrategy
+-- runTestShowdownStrategies 10 (mkStdGen 123) (markovChainStrategy::RpsStrategy) mimicStrategy
 
 main :: IO ()
 main = do
@@ -168,5 +162,5 @@ main = do
   input <- getLine
   let howMany = read input :: Int
   gen <- newStdGen
-  results <- runTestShowdownStrategies howMany gen markovChainRpsStrategy userInputRpsStrategy
+  results <- runTestShowdownStrategies howMany gen (markovChainStrategy::RpsStrategy) userInputStrategy
   print results
