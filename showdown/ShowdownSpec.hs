@@ -6,6 +6,7 @@ module ShowdownSpec where
 import Test.Hspec
 import Test.QuickCheck
 import qualified Data.Map as Map
+import qualified Data.MultiSet as MS
 import Control.Monad.State
 import Control.Monad.Random
 import Data.Map (toList)
@@ -45,6 +46,9 @@ main = hspec $ do
       \(Positive n) -> do
         (outcomes, history) <-
           runTestShowdownStrategies n (mkStdGen n) randomRpsStrategy randomRpsStrategy
-        print $ (show n) ++ ": " ++ (show outcomes)
+--        print $ (show n) ++ ": " ++ (show outcomes)
         (length history) `shouldBe` n
-        // TODO check that outcomes are correct w/ respect to history
+        outcomes `shouldBe` (toStats history)
+        where
+          toStats :: (Showdown a) => ShowdownHistory a -> Stats Outcome
+          toStats = MS.toMap . MS.fromList . (map $ uncurry showdown)
